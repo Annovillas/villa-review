@@ -26,20 +26,11 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(--ink); min-height: 100vh; }
 
-  header {
-    background: var(--bark);
-    padding: 20px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
+  header { background: var(--bark); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
   header h1 { font-family: 'DM Serif Display', serif; font-size: 22px; font-weight: 400; color: var(--sand); }
-  .header-right { display: flex; align-items: center; gap: 16px; }
-  #sync-status { font-size: 13px; color: var(--tan); }
   .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; margin-right: 5px; animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  #sync-status { font-size: 13px; color: var(--tan); }
 
   .toolbar { padding: 20px 32px 0; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: var(--radius); border: none; font-family: 'DM Sans', sans-serif; font-size: 14px; cursor: pointer; transition: background 0.18s, transform 0.1s; }
@@ -110,7 +101,6 @@
 
   .empty-state { text-align: center; padding: 56px 20px; color: var(--ink-soft); }
   .empty-state p { font-size: 15px; margin-top: 8px; }
-
   .loading-bar { text-align: center; padding: 40px; color: var(--ink-soft); font-size: 14px; }
   .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--sand-dark); border-top-color: var(--bark); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 8px; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -124,6 +114,29 @@
   .form-input { width: 100%; border: 1.5px solid var(--sand-dark); border-radius: 9px; padding: 10px 13px; font-size: 14px; font-family: 'DM Sans', sans-serif; background: var(--sand); color: var(--ink); transition: border-color 0.15s; }
   .form-input:focus { outline: none; border-color: var(--bark); background: var(--white); }
   textarea.form-input { resize: vertical; min-height: 140px; line-height: 1.6; }
+
+  /* Villa select grid */
+  .villa-select-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .villa-option {
+    padding: 10px 14px;
+    border: 1.5px solid var(--sand-dark);
+    border-radius: 9px;
+    background: var(--sand);
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    line-height: 1.35;
+  }
+  .villa-option:hover { border-color: var(--tan-dark); background: var(--sand-dark); }
+  .villa-option.selected { border-color: var(--bark); background: var(--bark); color: var(--sand); }
+
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
   .badge-used { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; background: var(--green-bg); color: var(--green-txt); margin-left: 6px; }
 
@@ -132,6 +145,7 @@
     .table-wrapper { margin: 0 16px 32px; }
     thead th:nth-child(4), td:nth-child(4) { display: none; }
     .filter-group { margin-left: 0; }
+    .villa-select-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -139,9 +153,7 @@
 
 <header>
   <h1>Villa Review Manager</h1>
-  <div class="header-right">
-    <span id="sync-status"><span class="live-dot"></span>Live</span>
-  </div>
+  <span id="sync-status"><span class="live-dot"></span>Live</span>
 </header>
 
 <div class="toolbar">
@@ -198,12 +210,13 @@
   </div>
 </div>
 
+<!-- Modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <h2 id="modal-title">Add Villa</h2>
-    <div class="form-field">
-      <label>Villa Name</label>
-      <input class="form-input" id="inp-name" type="text" placeholder="e.g. Villa Serenity Ubud">
+    <div class="form-field" id="villa-picker-wrap">
+      <label>Select Villa</label>
+      <div class="villa-select-grid" id="villa-grid"></div>
     </div>
     <div class="form-field">
       <label>Villa Review</label>
@@ -222,12 +235,40 @@
   const SUPABASE_KEY = 'sb_publishable_d4rVtPWNhmr9QYpRcwLAaA_2hfZkiOY';
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  const VILLA_NAMES = [
+    'VillaD STELLO',
+    'VillaE MORLLA',
+    'VillaF NEVIA',
+    'VillaG VISTA',
+    'Sankando GV',
+    'Panorama',
+    'Premier VILLA',
+    'CUBE',
+    'GEKKOUEN',
+    'Necoana Glamping'
+  ];
+
   let data = [];
   let filter = 'all';
   let searchQuery = '';
   let editId = null;
+  let selectedVilla = '';
   let highlightIndex = -1;
   let debounceTimer = null;
+
+  // Build villa picker grid
+  function buildVillaGrid() {
+    const grid = document.getElementById('villa-grid');
+    grid.innerHTML = VILLA_NAMES.map(name =>
+      `<button type="button" class="villa-option" data-name="${escHtml(name)}" onclick="selectVilla(this)">${escHtml(name)}</button>`
+    ).join('');
+  }
+
+  function selectVilla(el) {
+    document.querySelectorAll('.villa-option').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedVilla = el.dataset.name;
+  }
 
   async function loadData() {
     const { data: rows, error } = await sb.from('villas').select('*').order('created_at', { ascending: false });
@@ -238,20 +279,15 @@
     renderTable();
   }
 
-  // Realtime subscription
   function subscribeRealtime() {
     sb.channel('villas-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'villas' }, () => {
-        loadData();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'villas' }, () => { loadData(); })
       .subscribe();
   }
 
   function setFilter(f) {
     filter = f;
-    ['all','pending','used'].forEach(id => {
-      document.getElementById('f-'+id).classList.toggle('active', id === f);
-    });
+    ['all','pending','used'].forEach(id => document.getElementById('f-'+id).classList.toggle('active', id === f));
     renderTable();
   }
 
@@ -269,7 +305,6 @@
   function renderTable() {
     const tbody = document.getElementById('table-body');
     const empty = document.getElementById('empty-state');
-    const emptyMsg = document.getElementById('empty-msg');
     const rows = getFilteredRows();
     const total = data.length;
     const usedCount = data.filter(r => r.used).length;
@@ -286,7 +321,9 @@
     if (rows.length === 0) {
       tbody.innerHTML = '';
       empty.style.display = 'block';
-      emptyMsg.textContent = searchQuery ? `No villa found matching "${searchQuery}".` : 'No entries yet. Click "Add Villa" to get started.';
+      document.getElementById('empty-msg').textContent = searchQuery
+        ? `No villa found matching "${searchQuery}".`
+        : 'No entries yet. Click "Add Villa" to get started.';
       return;
     }
     empty.style.display = 'none';
@@ -331,7 +368,7 @@
   function highlightMatch(name, query) {
     const idx = name.toLowerCase().indexOf(query.toLowerCase());
     if (idx === -1) return escHtml(name);
-    return escHtml(name.slice(0, idx)) + '<mark>' + escHtml(name.slice(idx, idx + query.length)) + '</mark>' + escHtml(name.slice(idx + query.length));
+    return escHtml(name.slice(0,idx)) + '<mark>' + escHtml(name.slice(idx, idx+query.length)) + '</mark>' + escHtml(name.slice(idx+query.length));
   }
 
   function escHtml(s) {
@@ -350,9 +387,9 @@
     const box = document.getElementById('suggestions');
     if (!val.trim()) { box.classList.remove('open'); return; }
     const q = val.toLowerCase();
-    const matches = [...new Set(data.map(r => r.name))].filter(n => n.toLowerCase().includes(q) && n.toLowerCase() !== q).slice(0, 8);
+    const matches = VILLA_NAMES.filter(n => n.toLowerCase().includes(q)).slice(0, 8);
     if (!matches.length) { box.classList.remove('open'); return; }
-    box.innerHTML = matches.map((n, i) =>
+    box.innerHTML = matches.map((n,i) =>
       `<div class="suggestion-item" data-i="${i}" onmousedown="selectSuggestion('${escHtml(n)}')">${highlightMatch(n, val)}</div>`
     ).join('');
     highlightIndex = -1;
@@ -375,10 +412,10 @@
   function onSearchKey(e) {
     const box = document.getElementById('suggestions');
     const items = box.querySelectorAll('.suggestion-item');
-    if (e.key === 'ArrowDown') { e.preventDefault(); highlightIndex = Math.min(highlightIndex+1, items.length-1); items.forEach((el,i)=>el.classList.toggle('highlighted',i===highlightIndex)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); highlightIndex = Math.max(highlightIndex-1,-1); items.forEach((el,i)=>el.classList.toggle('highlighted',i===highlightIndex)); }
-    else if (e.key === 'Enter') { if (highlightIndex>=0&&items[highlightIndex]) items[highlightIndex].dispatchEvent(new MouseEvent('mousedown')); else box.classList.remove('open'); }
-    else if (e.key === 'Escape') box.classList.remove('open');
+    if (e.key==='ArrowDown'){e.preventDefault();highlightIndex=Math.min(highlightIndex+1,items.length-1);items.forEach((el,i)=>el.classList.toggle('highlighted',i===highlightIndex));}
+    else if(e.key==='ArrowUp'){e.preventDefault();highlightIndex=Math.max(highlightIndex-1,-1);items.forEach((el,i)=>el.classList.toggle('highlighted',i===highlightIndex));}
+    else if(e.key==='Enter'){if(highlightIndex>=0&&items[highlightIndex])items[highlightIndex].dispatchEvent(new MouseEvent('mousedown'));else box.classList.remove('open');}
+    else if(e.key==='Escape')box.classList.remove('open');
   }
 
   function clearSearch() {
@@ -401,12 +438,11 @@
 
   async function toggleUsed(id, currentUsed) {
     const newUsed = !currentUsed;
-    const today = new Date().toISOString().slice(0,10);
     const row = data.find(r => r.id === id);
     const updateData = { used: newUsed };
-    if (newUsed && (!row.date || row.date === '')) updateData.date = today;
+    if (newUsed && (!row.date || row.date === '')) updateData.date = new Date().toISOString().slice(0,10);
     const { error } = await sb.from('villas').update(updateData).eq('id', id);
-    if (error) { alert('Error updating. Please try again.'); return; }
+    if (error) { alert('Error updating.'); return; }
     await loadData();
   }
 
@@ -427,37 +463,40 @@
 
   function openModal(id) {
     editId = id || null;
+    selectedVilla = '';
+    buildVillaGrid();
+
     if (editId) {
       const row = data.find(r => r.id === editId);
       document.getElementById('modal-title').textContent = 'Edit Villa';
-      document.getElementById('inp-name').value = row.name;
+      document.getElementById('villa-picker-wrap').style.display = 'none';
       document.getElementById('inp-review').value = row.review;
+      selectedVilla = row.name;
     } else {
       document.getElementById('modal-title').textContent = 'Add Villa';
-      document.getElementById('inp-name').value = '';
+      document.getElementById('villa-picker-wrap').style.display = 'block';
       document.getElementById('inp-review').value = '';
     }
     document.getElementById('overlay').classList.add('open');
-    setTimeout(() => document.getElementById('inp-name').focus(), 100);
   }
 
   function closeModal() {
     document.getElementById('overlay').classList.remove('open');
     editId = null;
+    selectedVilla = '';
   }
 
   async function saveEntry() {
-    const name = document.getElementById('inp-name').value.trim();
     const review = document.getElementById('inp-review').value.trim();
-    if (!name) { alert('Please enter a villa name.'); return; }
+    if (!selectedVilla) { alert('Please select a villa.'); return; }
     const btn = document.getElementById('save-btn');
     btn.textContent = 'Saving...';
     btn.disabled = true;
     let error;
     if (editId) {
-      ({ error } = await sb.from('villas').update({ name, review }).eq('id', editId));
+      ({ error } = await sb.from('villas').update({ name: selectedVilla, review }).eq('id', editId));
     } else {
-      ({ error } = await sb.from('villas').insert({ name, review, used: false, notes: '', date: '' }));
+      ({ error } = await sb.from('villas').insert({ name: selectedVilla, review, used: false, notes: '', date: '' }));
     }
     btn.textContent = 'Save';
     btn.disabled = false;
@@ -466,8 +505,8 @@
     closeModal();
   }
 
-  document.getElementById('overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  document.getElementById('overlay').addEventListener('click', function(e) { if (e.target===this) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
 
   loadData();
   subscribeRealtime();
